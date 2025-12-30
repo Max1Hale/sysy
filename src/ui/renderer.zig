@@ -91,22 +91,40 @@ pub const Renderer = struct {
         _ = win.print(&.{.{ .text = line }}, .{ .row_offset = @intCast(row.*) });
         row.* += 1;
 
+        // Render multi-line graph
         var graph_data: [60]f64 = undefined;
         var i: usize = 0;
         while (i < self.cpu_history.len()) : (i += 1) {
             graph_data[i] = self.cpu_history.get(i) orelse 0.0;
         }
 
-        var graph_buf: [512]u8 = undefined;
-        const sparkline = try graph.renderSparkline(graph_data[0..self.cpu_history.len()], 100.0, &graph_buf);
-        const graph_line = try std.fmt.allocPrint(alloc, "  {s}", .{sparkline});
-        _ = win.print(&.{.{ .text = graph_line }}, .{ .row_offset = @intCast(row.*) });
-        row.* += 1;
+        const graph_rows = try graph.renderMultiLineGraph(
+            win,
+            graph_data[0..self.cpu_history.len()],
+            100.0,
+            row.*,
+            3,
+            alloc,
+        );
+        row.* += graph_rows;
 
-        for (cpu.per_core, 0..) |core_usage, core_idx| {
-            var core_buf: [64]u8 = undefined;
-            const core_str = try formatting.formatPercent(core_usage, &core_buf);
-            const core_line = try std.fmt.allocPrint(alloc, "  Core {d}: {s}", .{ core_idx, core_str });
+        // Show per-core usage in a compact format
+        const cores_per_row = 4;
+        var core_idx: usize = 0;
+        while (core_idx < cpu.per_core.len) : (core_idx += cores_per_row) {
+            var line_buf: [256]u8 = undefined;
+            var line_stream = std.io.fixedBufferStream(&line_buf);
+            const writer = line_stream.writer();
+
+            try writer.writeAll("  ");
+            const end_idx = @min(core_idx + cores_per_row, cpu.per_core.len);
+            for (core_idx..end_idx) |ci| {
+                var core_buf: [32]u8 = undefined;
+                const core_str = try formatting.formatPercent(cpu.per_core[ci], &core_buf);
+                try writer.print("C{d}:{s} ", .{ ci, core_str });
+            }
+
+            const core_line = try std.fmt.allocPrint(alloc, "{s}", .{line_stream.getWritten()});
             _ = win.print(&.{.{ .text = core_line }}, .{ .row_offset = @intCast(row.*) });
             row.* += 1;
         }
@@ -129,17 +147,22 @@ pub const Renderer = struct {
         _ = win.print(&.{.{ .text = line }}, .{ .row_offset = @intCast(row.*) });
         row.* += 1;
 
+        // Render multi-line graph
         var graph_data: [60]f64 = undefined;
         var i: usize = 0;
         while (i < self.mem_history.len()) : (i += 1) {
             graph_data[i] = self.mem_history.get(i) orelse 0.0;
         }
 
-        var graph_buf: [512]u8 = undefined;
-        const sparkline = try graph.renderSparkline(graph_data[0..self.mem_history.len()], 100.0, &graph_buf);
-        const graph_line = try std.fmt.allocPrint(alloc, "  {s}", .{sparkline});
-        _ = win.print(&.{.{ .text = graph_line }}, .{ .row_offset = @intCast(row.*) });
-        row.* += 1;
+        const graph_rows = try graph.renderMultiLineGraph(
+            win,
+            graph_data[0..self.mem_history.len()],
+            100.0,
+            row.*,
+            3,
+            alloc,
+        );
+        row.* += graph_rows;
     }
 
     fn renderDisk(self: *Renderer, win: *vaxis.Window, disk: types.DiskMetrics, row: *usize, alloc: std.mem.Allocator) !void {
