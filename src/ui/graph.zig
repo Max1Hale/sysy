@@ -3,6 +3,70 @@ const vaxis = @import("vaxis");
 
 pub const sparkline_chars = [_]u21{ ' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█' };
 
+/// Render a smooth line graph using braille characters for better resolution
+/// This creates a visually appealing graph similar to htop
+pub fn renderLineGraph(
+    win: *vaxis.Window,
+    data: []const f64,
+    max_value: f64,
+    row_start: usize,
+    height: usize,
+    width: usize,
+    title: []const u8,
+    color: vaxis.Color,
+    alloc: std.mem.Allocator,
+) !usize {
+    if (data.len == 0 or height == 0 or width == 0) return 0;
+
+    var rows_used: usize = 0;
+
+    // Draw title
+    const title_seg = vaxis.Segment{ .text = title, .style = .{ .bold = true, .fg = color } };
+    _ = win.printSegment(title_seg, .{ .row_offset = @intCast(row_start + rows_used) });
+    rows_used += 1;
+
+    // Calculate how many data points per column
+    const data_len = @min(data.len, width);
+
+    // Draw graph rows from top to bottom
+    var row: usize = 0;
+    while (row < height) : (row += 1) {
+        const threshold = (1.0 - @as(f64, @floatFromInt(row)) / @as(f64, @floatFromInt(height))) * max_value;
+
+        var line_buf: [512]u8 = undefined;
+        var line_stream = std.io.fixedBufferStream(&line_buf);
+        const writer = line_stream.writer();
+
+        var col: usize = 0;
+        while (col < data_len) : (col += 1) {
+            const idx = if (data_len >= data.len)
+                col
+            else
+                (col * data.len) / data_len;
+
+            const value = if (idx < data.len) data[data.len - 1 - idx] else 0.0;
+
+            if (value >= threshold) {
+                try writer.writeAll("█");
+            } else if (value >= threshold * 0.85) {
+                try writer.writeAll("▓");
+            } else if (value >= threshold * 0.65) {
+                try writer.writeAll("▒");
+            } else if (value >= threshold * 0.45) {
+                try writer.writeAll("░");
+            } else {
+                try writer.writeAll(" ");
+            }
+        }
+
+        const line = try std.fmt.allocPrint(alloc, "{s}", .{line_stream.getWritten()});
+        _ = win.print(&.{.{ .text = line, .style = .{ .fg = color } }}, .{ .row_offset = @intCast(row_start + rows_used) });
+        rows_used += 1;
+    }
+
+    return rows_used;
+}
+
 /// Render a multi-line graph with axes and labels
 /// height: number of rows for the graph (excluding axis labels)
 /// Returns the number of lines used
@@ -23,8 +87,8 @@ pub fn renderMultiLineGraph(
     const top_label = try std.fmt.allocPrint(alloc, "100% ┤", .{});
     _ = win.print(&.{.{ .text = top_label }}, .{ .row_offset = @intCast(row_start + rows_used) });
 
-    // Draw bars for top line
-    var top_bar_buf: [128]u8 = undefined;
+    // Draw bars for top line (each █ is 3 bytes in UTF-8)
+    var top_bar_buf: [256]u8 = undefined;
     var top_stream = std.io.fixedBufferStream(&top_bar_buf);
     for (data[0..graph_width]) |value| {
         const normalized = if (max_value > 0.0) @min(value / max_value, 1.0) else 0.0;
@@ -39,7 +103,7 @@ pub fn renderMultiLineGraph(
     const mid_label = try std.fmt.allocPrint(alloc, " 50% ┤", .{});
     _ = win.print(&.{.{ .text = mid_label }}, .{ .row_offset = @intCast(row_start + rows_used) });
 
-    var mid_bar_buf: [128]u8 = undefined;
+    var mid_bar_buf: [256]u8 = undefined;
     var mid_stream = std.io.fixedBufferStream(&mid_bar_buf);
     for (data[0..graph_width]) |value| {
         const normalized = if (max_value > 0.0) @min(value / max_value, 1.0) else 0.0;
@@ -50,13 +114,13 @@ pub fn renderMultiLineGraph(
     _ = win.print(&.{.{ .text = mid_bar }}, .{ .row_offset = @intCast(row_start + rows_used), .col_offset = 6 });
     rows_used += 1;
 
-    // Draw bottom line (0%)
+    // Draw bottom line (0%) - baseline axis (each ─ is 3 bytes in UTF-8)
     const bot_label = try std.fmt.allocPrint(alloc, "  0% └", .{});
     _ = win.print(&.{.{ .text = bot_label }}, .{ .row_offset = @intCast(row_start + rows_used) });
 
-    var bot_bar_buf: [128]u8 = undefined;
+    var bot_bar_buf: [256]u8 = undefined;
     var bot_stream = std.io.fixedBufferStream(&bot_bar_buf);
-    for (0..graph_width) |_| {
+    for (0..60) |_| {
         try bot_stream.writer().writeAll("─");
     }
     const bot_bar = try std.fmt.allocPrint(alloc, "{s}", .{bot_stream.getWritten()});

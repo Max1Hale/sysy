@@ -5,7 +5,9 @@ const cpu_collector = @import("platform/macos/cpu.zig");
 const memory_collector = @import("platform/macos/memory.zig");
 const disk_collector = @import("platform/macos/disk.zig");
 const network_collector = @import("platform/macos/network.zig");
+const process_collector = @import("platform/macos/process.zig");
 const Renderer = @import("ui/renderer.zig").Renderer;
+const ui_state = @import("ui/ui_state.zig");
 const vaxis = @import("vaxis");
 
 pub fn main() !void {
@@ -73,6 +75,9 @@ fn runContinuous(
     var renderer = try Renderer.init(allocator);
     defer renderer.deinitWithoutVaxis();
 
+    var proc_collector = try process_collector.ProcessCollector.init(allocator);
+    defer proc_collector.deinit();
+
     var buffer: [1024]u8 = undefined;
     var tty = try vaxis.Tty.init(&buffer);
     defer tty.deinit();
@@ -103,6 +108,35 @@ fn runContinuous(
                     if (key.matches('c', .{ .ctrl = true }) or key.matches('q', .{})) {
                         should_quit = true;
                         break;
+                    } else if (key.matches('j', .{})) {
+                        // Vim: scroll down
+                        const processes = proc_collector.process_list.items;
+                        renderer.ui_state.scrollDown(processes.len);
+                    } else if (key.matches('k', .{})) {
+                        // Vim: scroll up
+                        renderer.ui_state.scrollUp();
+                    } else if (key.matches('d', .{})) {
+                        // Vim: page down
+                        const processes = proc_collector.process_list.items;
+                        renderer.ui_state.pageDown(processes.len);
+                    } else if (key.matches('u', .{})) {
+                        // Vim: page up
+                        renderer.ui_state.pageUp();
+                    } else if (key.matches('1', .{})) {
+                        // Switch to CPU panel
+                        renderer.ui_state.switchToPanel(.cpu);
+                    } else if (key.matches('2', .{})) {
+                        // Switch to Memory panel
+                        renderer.ui_state.switchToPanel(.memory);
+                    } else if (key.matches('3', .{})) {
+                        // Switch to Disk panel
+                        renderer.ui_state.switchToPanel(.disk);
+                    } else if (key.matches('4', .{})) {
+                        // Switch to Network panel
+                        renderer.ui_state.switchToPanel(.network);
+                    } else if (key.matches('5', .{})) {
+                        // Switch to Processes panel
+                        renderer.ui_state.switchToPanel(.processes);
                     }
                 },
                 .winsize => |ws| {
@@ -131,6 +165,7 @@ fn runContinuous(
             const mem_metrics = try mem.collect();
             const disk_metrics = try disk.collect();
             const net_metrics = try net.collect();
+            const processes = try proc_collector.collect();
 
             const metrics = types.Metrics{
                 .cpu = cpu_metrics,
@@ -141,7 +176,7 @@ fn runContinuous(
             };
 
             // Render the UI
-            try renderer.render(metrics, tty_writer);
+            try renderer.render(metrics, processes, tty_writer);
             last_render = now;
         }
 
