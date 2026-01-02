@@ -55,10 +55,12 @@ pub const Renderer = struct {
         self.allocator.destroy(self.vaxis_arena);
     }
 
-    pub fn render(self: *Renderer, metrics: types.Metrics, processes: []const process_collector.ProcessInfo, tty_writer: anytype) !void {
+    pub fn updateHistory(self: *Renderer, metrics: types.Metrics) void {
         self.cpu_history.push(metrics.cpu.total_usage);
         self.mem_history.push(metrics.memory.usagePercent());
+    }
 
+    pub fn render(self: *Renderer, metrics: types.Metrics, processes: []const process_collector.ProcessInfo, tty_writer: anytype) !void {
         // Use a fixed buffer allocator for all text rendering
         var fba = std.heap.FixedBufferAllocator.init(&self.render_buffer);
         const buf_alloc = fba.allocator();

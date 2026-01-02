@@ -97,8 +97,15 @@ fn runContinuous(
     try renderer.vx.queryTerminal(tty_writer, 1 * std.time.ns_per_s);
 
     var should_quit = false;
-    var last_render: i64 = 0; // Initialize to 0 to force immediate first render
+    var last_metrics_collect: i64 = 0; // Track when we last collected metrics
     var ready_to_render = false;
+    var needs_render = true; // Force initial render
+
+    // Cache for metrics to use between collection cycles
+    var cached_cpu_metrics: ?types.CPUMetrics = null;
+    var cached_mem_metrics: types.MemoryMetrics = undefined;
+    var cached_disk_metrics: types.DiskMetrics = undefined;
+    var cached_net_metrics: types.NetworkMetrics = undefined;
 
     while (!should_quit) {
         // Check for events without blocking (vaxis loop runs in background thread)
@@ -112,37 +119,47 @@ fn runContinuous(
                         // Vim: scroll down
                         const processes = proc_collector.process_list.items;
                         renderer.ui_state.scrollDown(processes.len);
+                        needs_render = true;
                     } else if (key.matches('k', .{})) {
                         // Vim: scroll up
                         renderer.ui_state.scrollUp();
+                        needs_render = true;
                     } else if (key.matches('d', .{})) {
                         // Vim: page down
                         const processes = proc_collector.process_list.items;
                         renderer.ui_state.pageDown(processes.len);
+                        needs_render = true;
                     } else if (key.matches('u', .{})) {
                         // Vim: page up
                         renderer.ui_state.pageUp();
+                        needs_render = true;
                     } else if (key.matches('1', .{})) {
                         // Switch to CPU panel
                         renderer.ui_state.switchToPanel(.cpu);
+                        needs_render = true;
                     } else if (key.matches('2', .{})) {
                         // Switch to Memory panel
                         renderer.ui_state.switchToPanel(.memory);
+                        needs_render = true;
                     } else if (key.matches('3', .{})) {
                         // Switch to Disk panel
                         renderer.ui_state.switchToPanel(.disk);
+                        needs_render = true;
                     } else if (key.matches('4', .{})) {
                         // Switch to Network panel
                         renderer.ui_state.switchToPanel(.network);
+                        needs_render = true;
                     } else if (key.matches('5', .{})) {
                         // Switch to Processes panel
                         renderer.ui_state.switchToPanel(.processes);
+                        needs_render = true;
                     }
                 },
                 .winsize => |ws| {
                     const vaxis_allocator = renderer.vaxis_arena.allocator();
                     try renderer.vx.resize(vaxis_allocator, tty_writer, ws);
                     ready_to_render = true;
+                    needs_render = true;
                 },
             }
         }
@@ -155,32 +172,58 @@ fn runContinuous(
             continue;
         }
 
-        // Render at most once per second
+        // Collect metrics once per second
         const now = std.time.milliTimestamp();
-        if (now - last_render >= 1000) {
-            // Collect metrics
-            var cpu_metrics = try cpu.collect();
-            defer cpu_metrics.deinit(allocator);
+        if (now - last_metrics_collect >= 1000) {
+            // Clean up old cached metrics if any
+            if (cached_cpu_metrics) |*old_cpu| {
+                old_cpu.deinit(allocator);
+            }
 
-            const mem_metrics = try mem.collect();
-            const disk_metrics = try disk.collect();
-            const net_metrics = try net.collect();
-            const processes = try proc_collector.collect();
+            // Collect new metrics
+            cached_cpu_metrics = try cpu.collect();
+            cached_mem_metrics = try mem.collect();
+            cached_disk_metrics = try disk.collect();
+            cached_net_metrics = try net.collect();
+            _ = try proc_collector.collect();
 
+            // Update graph history only when we have new metrics
+            const new_metrics = types.Metrics{
+                .cpu = cached_cpu_metrics.?,
+                .memory = cached_mem_metrics,
+                .disk = cached_disk_metrics,
+                .network = cached_net_metrics,
+                .timestamp = now,
+            };
+            renderer.updateHistory(new_metrics);
+
+            last_metrics_collect = now;
+            needs_render = true;
+        }
+
+        // Render immediately when UI state changes or metrics are updated
+        if (needs_render and cached_cpu_metrics != null) {
             const metrics = types.Metrics{
-                .cpu = cpu_metrics,
-                .memory = mem_metrics,
-                .disk = disk_metrics,
-                .network = net_metrics,
+                .cpu = cached_cpu_metrics.?,
+                .memory = cached_mem_metrics,
+                .disk = cached_disk_metrics,
+                .network = cached_net_metrics,
                 .timestamp = now,
             };
 
+            const processes = proc_collector.process_list.items;
+
             // Render the UI
             try renderer.render(metrics, processes, tty_writer);
-            last_render = now;
+            needs_render = false;
         }
 
-        std.Thread.sleep(50 * std.time.ns_per_ms);
+        std.Thread.sleep(16 * std.time.ns_per_ms); // ~60fps for responsive input
+    }
+
+    // Clean up cached metrics
+    if (cached_cpu_metrics) |*cpu_m| {
+        cpu_m.deinit(allocator);
     }
 
     try renderer.vx.exitAltScreen(tty_writer);
