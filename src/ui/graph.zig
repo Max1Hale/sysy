@@ -48,11 +48,11 @@ pub fn renderLineGraph(
 
             if (value >= threshold) {
                 try writer.writeAll("█");
-            } else if (value >= threshold * 0.85) {
+            } else if (value >= threshold * 0.75) {
                 try writer.writeAll("▓");
-            } else if (value >= threshold * 0.65) {
+            } else if (value >= threshold * 0.50) {
                 try writer.writeAll("▒");
-            } else if (value >= threshold * 0.45) {
+            } else if (value >= threshold * 0.25) {
                 try writer.writeAll("░");
             } else {
                 try writer.writeAll(" ");
