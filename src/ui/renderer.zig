@@ -184,40 +184,108 @@ pub const Renderer = struct {
         return 2;
     }
 
-    fn renderProcessList(self: *Renderer, win: *vaxis.Window, processes: []const process_collector.ProcessInfo, row_start: usize, alloc: std.mem.Allocator) !void {
-        const color: vaxis.Color = if (self.ui_state.active_panel == .processes)
-            .{ .index = 3 }
-        else
-            .{ .index = 7 };
+    fn renderProcessList(
+        self: *Renderer,
+        win: *vaxis.Window,
+        processes: []const process_collector.ProcessInfo,
+        row_start: usize,
+        alloc: std.mem.Allocator,
+    ) !void {
+        const color: vaxis.Color =
+            if (self.ui_state.active_panel == .processes)
+                .{ .index = 3 }
+            else
+                .{ .index = 7 };
 
-        // Header
-        const header = try std.fmt.allocPrint(alloc, "5:Processes (PID | Name | Memory)", .{});
-        _ = win.print(&.{.{ .text = header, .style = .{ .bold = true, .fg = color } }}, .{ .row_offset = @intCast(row_start) });
+        const PID_WIDTH = 6;
+        const NAME_WIDTH = 20;
+        const MEM_WIDTH = 8;
 
-        // Render visible processes
-        const visible_height = if (win.height > row_start + 2) win.height - row_start - 2 else 1;
-        const end_idx = @min(self.ui_state.process_scroll_offset + visible_height, processes.len);
+        const row_fmt = comptime std.fmt.comptimePrint(
+            "{{d:>{}}} | {{s:<{}}} | {{s:>{}}}",
+            .{ PID_WIDTH, NAME_WIDTH, MEM_WIDTH },
+        );
 
-        var row = row_start + 1;
-        for (processes[self.ui_state.process_scroll_offset..end_idx], 0..) |proc, rel_idx| {
-            const abs_idx = self.ui_state.process_scroll_offset + rel_idx;
-            const is_selected = abs_idx == self.ui_state.selected_process_index and self.ui_state.active_panel == .processes;
+        const header_fmt = comptime std.fmt.comptimePrint(
+            "{{s:>{}}} | {{s:<{}}} | {{s:>{}}}",
+            .{ PID_WIDTH, NAME_WIDTH, MEM_WIDTH },
+        );
+
+        const title = try std.fmt.allocPrint(alloc, "5. Processes", .{});
+        _ = win.print(
+            &.{.{ .text = title, .style = .{ .bold = true, .fg = color } }},
+            .{ .row_offset = @intCast(row_start) },
+        );
+
+        const header = try std.fmt.allocPrint(
+            alloc,
+            header_fmt,
+            .{ "PID", "Name", "Memory" },
+        );
+
+        _ = win.print(
+            &.{.{ .text = header, .style = .{ .bold = true, .fg = color } }},
+            .{ .row_offset = @intCast(row_start + 1) },
+        );
+
+        const content_start = row_start + 2;
+        const visible_height =
+            if (win.height > content_start)
+                win.height - content_start
+            else
+                1;
+
+        const end_idx =
+            @min(
+                self.ui_state.process_scroll_offset + visible_height,
+                processes.len,
+            );
+
+        var row = content_start;
+        for (
+            processes[self.ui_state.process_scroll_offset..end_idx],
+            0..,
+        ) |proc, rel_idx| {
+            const abs_idx =
+                self.ui_state.process_scroll_offset + rel_idx;
+
+            const is_selected =
+                abs_idx == self.ui_state.selected_process_index and
+                self.ui_state.active_panel == .processes;
 
             var mem_buf: [32]u8 = undefined;
-            const mem_str = try formatting.formatBytes(proc.mem_bytes, &mem_buf);
+            const mem_str =
+                try formatting.formatBytes(proc.mem_bytes, &mem_buf);
 
-            const line = try std.fmt.allocPrint(alloc, "{d:>6} | {s:<20} | {s:>8}", .{
-                proc.pid,
-                proc.getName()[0..@min(proc.getName().len, 20)],
-                mem_str,
-            });
+            const name = proc.getName();
+            const clipped_name =
+                name[0..@min(name.len, NAME_WIDTH)];
 
-            const style: vaxis.Style = if (is_selected)
-                .{ .bg = .{ .index = 7 }, .fg = .{ .index = 0 }, .reverse = true }
-            else
-                .{};
+            const line = try std.fmt.allocPrint(
+                alloc,
+                row_fmt,
+                .{
+                    proc.pid,
+                    clipped_name,
+                    mem_str,
+                },
+            );
 
-            _ = win.print(&.{.{ .text = line, .style = style }}, .{ .row_offset = @intCast(row) });
+            const style: vaxis.Style =
+                if (is_selected)
+                    .{
+                        .bg = .{ .index = 7 },
+                        .fg = .{ .index = 0 },
+                        .reverse = true,
+                    }
+                else
+                    .{};
+
+            _ = win.print(
+                &.{.{ .text = line, .style = style }},
+                .{ .row_offset = @intCast(row) },
+            );
+
             row += 1;
         }
     }
