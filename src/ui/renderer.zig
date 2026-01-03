@@ -81,10 +81,12 @@ pub const Renderer = struct {
         const col_width = graph_width / 2;
 
         // CPU Graph (top-left) - Panel 1
-        row += try self.renderCPUGraph(&win, metrics.cpu, row, graph_height, col_width, 0, buf_alloc);
+        _ = try self.renderCPUGraph(&win, metrics.cpu, row, graph_height, col_width, 0, buf_alloc);
 
         // Memory Graph (top-right) - Panel 2
-        _ = try self.renderMemoryGraph(&win, metrics.memory, row - graph_height, graph_height, col_width, col_width, buf_alloc);
+        _ = try self.renderMemoryGraph(&win, metrics.memory, row, graph_height, col_width, col_width, buf_alloc);
+
+        row += graph_height + 1;
 
         // Disk I/O (bottom-left) - Panel 3
         row += try self.renderDiskInfo(&win, metrics.disk, row, col_width, 0, buf_alloc);
@@ -230,7 +232,6 @@ pub const Renderer = struct {
         const row = if (win.height > 0) win.height - 1 else 0;
         _ = win.print(&.{.{ .text = status, .style = .{ .bg = .{ .index = 7 }, .fg = .{ .index = 0 } } }}, .{ .row_offset = @intCast(row) });
     }
-
 };
 
 test {
