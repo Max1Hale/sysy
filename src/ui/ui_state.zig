@@ -23,12 +23,25 @@ pub const Panel = enum {
     }
 };
 
+pub const ProcessSortMode = enum {
+    memory,
+    cpu,
+
+    pub fn toString(self: ProcessSortMode) []const u8 {
+        return switch (self) {
+            .memory => "MEM",
+            .cpu => "CPU",
+        };
+    }
+};
+
 pub const UIState = struct {
     active_panel: Panel,
     process_scroll_offset: usize,
     selected_process_index: usize,
     screen_width: usize,
     screen_height: usize,
+    process_sort_mode: ProcessSortMode,
 
     pub fn init() UIState {
         return UIState{
@@ -37,6 +50,7 @@ pub const UIState = struct {
             .selected_process_index = 0,
             .screen_width = 80,
             .screen_height = 24,
+            .process_sort_mode = .memory,
         };
     }
 
@@ -102,6 +116,16 @@ pub const UIState = struct {
 
     pub fn switchToPanel(self: *UIState, panel: Panel) void {
         self.active_panel = panel;
+    }
+
+    pub fn toggleProcessSort(self: *UIState) void {
+        self.process_sort_mode = switch (self.process_sort_mode) {
+            .memory => .cpu,
+            .cpu => .memory,
+        };
+        // Reset selection when changing sort mode
+        self.selected_process_index = 0;
+        self.process_scroll_offset = 0;
     }
 
     fn getProcessListHeight(self: *const UIState) usize {

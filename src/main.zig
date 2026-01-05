@@ -153,6 +153,10 @@ fn runContinuous(
                         // Switch to Processes panel
                         renderer.ui_state.switchToPanel(.processes);
                         needs_render = true;
+                    } else if (key.matches('s', .{})) {
+                        // Toggle process sort mode
+                        renderer.ui_state.toggleProcessSort();
+                        needs_render = true;
                     }
                 },
                 .winsize => |ws| {
@@ -185,7 +189,13 @@ fn runContinuous(
             cached_mem_metrics = try mem.collect();
             cached_disk_metrics = try disk.collect();
             cached_net_metrics = try net.collect();
-            _ = try proc_collector.collect();
+
+            // Convert UI sort mode to ProcessCollector sort mode
+            const sort_mode: process_collector.ProcessSortMode = switch (renderer.ui_state.process_sort_mode) {
+                .memory => .memory,
+                .cpu => .cpu,
+            };
+            _ = try proc_collector.collect(sort_mode);
 
             // Update graph history only when we have new metrics
             const new_metrics = types.Metrics{

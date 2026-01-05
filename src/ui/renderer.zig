@@ -200,18 +200,20 @@ pub const Renderer = struct {
         const PID_WIDTH = 6;
         const NAME_WIDTH = 20;
         const MEM_WIDTH = 8;
+        const CPU_WIDTH = 8;
 
         const row_fmt = comptime std.fmt.comptimePrint(
-            "{{d:>{}}} | {{s:<{}}} | {{s:>{}}}",
-            .{ PID_WIDTH, NAME_WIDTH, MEM_WIDTH },
+            "{{d:>{}}} | {{s:<{}}} | {{s:<{}}} | {{s:<{}}}",
+            .{ PID_WIDTH, NAME_WIDTH, MEM_WIDTH, CPU_WIDTH },
         );
 
         const header_fmt = comptime std.fmt.comptimePrint(
-            "{{s:>{}}} | {{s:<{}}} | {{s:>{}}}",
-            .{ PID_WIDTH, NAME_WIDTH, MEM_WIDTH },
+            "{{s:>{}}} | {{s:<{}}} | {{s:<{}}} | {{s:<{}}}",
+            .{ PID_WIDTH, NAME_WIDTH, MEM_WIDTH, CPU_WIDTH },
         );
 
-        const title = try std.fmt.allocPrint(alloc, "5. Processes", .{});
+        const sort_mode_str = self.ui_state.process_sort_mode.toString();
+        const title = try std.fmt.allocPrint(alloc, "5. Processes (Sort: {s})", .{sort_mode_str});
         _ = win.print(
             &.{.{ .text = title, .style = .{ .bold = true, .fg = color } }},
             .{ .row_offset = @intCast(row_start) },
@@ -220,7 +222,7 @@ pub const Renderer = struct {
         const header = try std.fmt.allocPrint(
             alloc,
             header_fmt,
-            .{ "PID", "Name", "Memory" },
+            .{ "PID", "Name", "Memory", "CPU (%)" },
         );
 
         _ = win.print(
@@ -261,14 +263,13 @@ pub const Renderer = struct {
             const clipped_name =
                 name[0..@min(name.len, NAME_WIDTH)];
 
+            var cpu_buf: [64]u8 = undefined;
+            const cpu_str = try formatting.formatPercent(proc.cpu_percent, &cpu_buf);
+
             const line = try std.fmt.allocPrint(
                 alloc,
                 row_fmt,
-                .{
-                    proc.pid,
-                    clipped_name,
-                    mem_str,
-                },
+                .{ proc.pid, clipped_name, mem_str, cpu_str },
             );
 
             const style: vaxis.Style =
@@ -293,7 +294,7 @@ pub const Renderer = struct {
     fn renderStatusBar(self: *Renderer, win: *vaxis.Window, alloc: std.mem.Allocator) !void {
         const status = try std.fmt.allocPrint(
             alloc,
-            " Vim: j/k=scroll d/u=page q=quit | Numbers: 1-5=switch panel | Panel: {s}",
+            " Vim: j/k=scroll d/u=page s=sort q=quit | Numbers: 1-5=switch panel | Panel: {s}",
             .{@tagName(self.ui_state.active_panel)},
         );
 
