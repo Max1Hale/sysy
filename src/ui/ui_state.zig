@@ -32,7 +32,7 @@ pub const UIState = struct {
 
     pub fn init() UIState {
         return UIState{
-            .active_panel = .cpu,
+            .active_panel = .processes,
             .process_scroll_offset = 0,
             .selected_process_index = 0,
             .screen_width = 80,
